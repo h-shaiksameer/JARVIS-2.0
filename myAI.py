@@ -214,7 +214,7 @@ def transcribe_audio_using_sr(file_path):
             text = recognizer.recognize_google(audio_data)
             return text
         except sr.UnknownValueError:
-            return "Audio could not be understood."
+            return "JARVIS listen to me."
         except sr.RequestError as e:
             return f"Error with the service: {e}"
 
