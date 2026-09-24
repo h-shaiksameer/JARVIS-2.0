@@ -50,7 +50,10 @@ import cv2
 import time
 import warnings
 import tempfile
-import whisper
+try:
+    import whisper
+except ImportError:
+    whisper = None
 import sounddevice as sd
 from features.copyMatter_from_Wikipedia import create_gui
 from features.prints import print_slow
@@ -67,15 +70,25 @@ warnings.filterwarnings("ignore", category=UserWarning, module='whisper')
 def get_absolute_path(relative_path):
     return os.path.join(os.path.dirname(__file__), relative_path)
 
-# Initialifze Pygame mixer
-pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=8192)
+# Initialifze Pygame mixer only when the assistant actually starts.
+# Loading the speech model here blocks startup before the welcome greeting can print.
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 # Set your API key
 load_dotenv()
 api_key = os.getenv("API_KEY")  # Ensure your .env file has this variable
+GEMINI_MODEL_NAME = "gemini-3.6-flash"
 resume_flag = Value('b', False)
 genai.configure(api_key=api_key)
-whisper_model = whisper.load_model("small")
+whisper_model = None
+
+
+def ensure_runtime_services():
+    global whisper_model
+    if not pygame.mixer.get_init():
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=8192)
+    if whisper is not None and whisper_model is None:
+        whisper_model = whisper.load_model("small")
+    return whisper_model
 
 
 def PlayVideo2(video_path):
@@ -211,12 +224,16 @@ def transcribe_audio_using_sr(file_path):
     with sr.AudioFile(file_path) as source:
         audio_data = recognizer.record(source)
         try:
+            samples = np.frombuffer(audio_data.get_raw_data(), dtype=np.int16)
+            if samples.size == 0 or np.sqrt(np.mean(samples.astype(np.float32) ** 2)) < 250:
+                return ""
             text = recognizer.recognize_google(audio_data)
             return text
         except sr.UnknownValueError:
-            return "JARVIS listen to me."
+            return ""
         except sr.RequestError as e:
-            return f"Error with the service: {e}"
+            print(f"Speech recognition service error: {e}", flush=True)
+            return ""
 
 def transcribe_audio_using_google(file_path):
     # Using Google Cloud Speech-to-Text API
@@ -263,7 +280,7 @@ def match_contact(contact_name, contacts):
 def get_phone_number_from_user():
     speak_and_play("I couldn't find the contact. Please say the phone number you want to send a message to.")
     while True:
-        audio = record_audio(duration=5)
+        audio = record_audio(duration=3)
         temp_wav_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
         temp_wav_filename = temp_wav_file.name
         temp_wav_file.close()
@@ -394,10 +411,14 @@ def save_audio_to_wav(audio, samplerate, filename):
 
 
 def record_audio(duration, samplerate=16000):
-    print("Listening to You Boss...")
-    recording = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='int16')
-    sd.wait()
-    return recording.flatten()
+    print("Listening to You Boss...", flush=True)
+    try:
+        recording = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='int16')
+        sd.wait()
+        return recording.flatten()
+    except Exception as exc:
+        print(f"Microphone capture failed: {exc}. Falling back to text input.", flush=True)
+        return None
 
 
 def play_video(video_path):
@@ -462,19 +483,41 @@ def text_to_speech(text, filename):
 #     engine.runAndWait()
 
 def get_gemini_response(model, message):
-    retry_attempts = 3  # Set the number of retry attempts
-    for attempt in range(retry_attempts):
-        try:
-            chat = model.start_chat()
-            response = chat.send_message(message)
-            return response.text
-        except InternalServerError as e:
-            print(f"Attempt {attempt + 1} failed due to server error: {e}. Retrying...")
-            time.sleep(2)  # Wait for 2 seconds before retrying
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            break  # Stop the loop on any unexpected error
-    return "Failed to get a response after multiple attempts."
+    if not api_key:
+        return "Gemini API key is not configured."
+
+    endpoint = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL_NAME}:generateContent"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": message}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 120,
+        },
+    }
+
+    try:
+        response = requests.post(
+            endpoint,
+            params={"key": api_key},
+            json=payload,
+            timeout=(3, 12),
+        )
+        if response.status_code == 429:
+            print("Gemini quota is temporarily exhausted; skipping the slow retry.", flush=True)
+            return "Gemini quota is temporarily exhausted. Please try again later."
+        response.raise_for_status()
+        candidates = response.json().get("candidates", [])
+        if candidates:
+            return candidates[0]["content"]["parts"][0]["text"]
+        return "Gemini returned an empty response."
+    except requests.exceptions.Timeout:
+        return "Gemini took too long to respond. Please try again."
+    except requests.exceptions.RequestException as exc:
+        print(f"Gemini request failed: {exc}", flush=True)
+        return "Gemini is temporarily unavailable."
 
 def process_response_text(text):
     text = re.sub(r'\*+', '', text)
@@ -551,7 +594,7 @@ def create_document():
     topic = ""
     attempts = 0
     while attempts < 3:
-        audio = record_audio(duration=5)
+        audio = record_audio(duration=3)
         temp_wav_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
         temp_wav_filename = temp_wav_file.name
         temp_wav_file.close()
@@ -572,8 +615,8 @@ def create_document():
         return
 
     # Generate content using Gemini model
-    model_name = "gemini-1.5-flash-8b"
-    gemini_model = genai.GenerativeModel("gemini-1.5-flash-8b")
+    model_name = "gemini-3.6-flash"
+    gemini_model = genai.GenerativeModel("gemini-3.6-flash")
     message = f"Provide a detailed explanation in a document form with sections about {topic}.(NOTE:THE MATTER SHOULD BE EASILY CONVERTED TO THE DOCUMENT BY JUST PASTING)"
     content = get_gemini_response(gemini_model, message)
     speak_and_play("Generating document content...")
@@ -623,8 +666,14 @@ def greet_user():
         greeting = "Good afternoon"
     else:
         greeting = "Good evening"
-    print_slow_and_speak(greeting)
-    print_slow_and_speak("Welcome Back Boss, All Systems are fully operational")
+
+    try:
+        print_slow_and_speak(greeting)
+        print_slow_and_speak("Welcome Back Boss, All Systems are fully operational")
+    except Exception as exc:
+        print(greeting, flush=True)
+        print("Welcome Back Boss, All Systems are fully operational", flush=True)
+        print(f"Greeting fallback used because speech failed: {exc}", flush=True)
 
 def play_audio(file_path):
     """Play an audio file."""
@@ -1199,7 +1248,7 @@ class CodeGeneratorApp:
 
     def generate_code(self):
         problem = self.problem_entry.get()
-        gemini_model = genai.GenerativeModel("gemini-1.5-flash-8b")
+        gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
         response = get_gemini_response(gemini_model,problem)
         code = self.extract_code(response)
         self.code_output.delete(1.0, tk.END)
@@ -1360,11 +1409,28 @@ def main():
     jarvis_folder = get_absolute_path("JarvisResponse")
     os.makedirs(output_folder, exist_ok=True)
     os.makedirs(jarvis_folder, exist_ok=True)
-    
+
+    print("JARVIS startup: loading runtime services...", flush=True)
+    try:
+        ensure_runtime_services()
+        print("JARVIS startup: audio services ready.", flush=True)
+    except Exception as exc:
+        print(f"JARVIS startup warning: audio services failed to initialize: {exc}", flush=True)
+
     #whisper_model = whisper.load_model("base")
-    gemini_model = genai.GenerativeModel("gemini-1.5-flash-8b")
-    
-    greet_user()
+    try:
+        gemini_model = genai.GenerativeModel("gemini-3.6-flash")
+    except Exception as exc:
+        print(f"Gemini model initialization failed: {exc}", flush=True)
+        gemini_model = None
+
+    print("JARVIS startup: playing welcome message...", flush=True)
+    try:
+        greet_user()
+    except Exception as exc:
+        print(f"Welcome message failed: {exc}", flush=True)
+
+    print("JARVIS is ready for commands.", flush=True)
 
     custom_responses = {
         "what is my name": get_absolute_path("media/Introductory_speech_of_me.wav"),
@@ -1508,31 +1574,39 @@ def main():
     ]   
     
     while True:
-        # audio = record_audio(duration)
-        
-        # temp_wav_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-        # temp_wav_filename = temp_wav_file.name
-        # temp_wav_file.close()
-        
-        # save_audio_to_wav(np.array(audio, dtype=np.int16), 16000, temp_wav_filename)
-        
-        # result = whisper_model.transcribe(temp_wav_filename,language="en")
-        # transcription = result.get("text", "No text found")
+        temp_wav_filename = None
         audio = record_audio(duration=5)
-        temp_wav_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-        temp_wav_filename = temp_wav_file.name
-        temp_wav_file.close()
-        save_audio_to_wav(audio, 16000, temp_wav_filename)
+        if audio is None:
+            print("JARVIS is running in text fallback mode. Type a command below:", flush=True)
+            transcription = input("Jarvis> ").strip()
+        else:
+            temp_folder = get_absolute_path("temp")
+            os.makedirs(temp_folder, exist_ok=True)
+            temp_wav_file = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix='.wav',
+                dir=temp_folder,
+            )
+            temp_wav_filename = temp_wav_file.name
+            temp_wav_file.close()
+            save_audio_to_wav(audio, 16000, temp_wav_filename)
 
-        # Use SpeechRecognition or Google Cloud Speech-to-Text for transcription
-        transcription = transcribe_audio_using_sr(temp_wav_filename)
-        
-        print("Sameer Boss:", transcription)
+            # Use SpeechRecognition or Google Cloud Speech-to-Text for transcription
+            transcription = transcribe_audio_using_sr(temp_wav_filename)
+            
+            if transcription:
+                print("Sameer Boss:", transcription, flush=True)
+            if os.path.exists(temp_wav_filename):
+                os.remove(temp_wav_filename)
+
+        if not transcription:
+            continue
         
         if any(phrase in transcription.lower() for phrase in stop_phrases):
             say_goodbye()
             print("Stopping...")
-            os.remove(temp_wav_filename)
+            if temp_wav_filename and os.path.exists(temp_wav_filename):
+                os.remove(temp_wav_filename)
             break
         
         matched_response = None
@@ -1611,11 +1685,12 @@ def main():
             response_file = os.path.join(jarvis_folder, f"jarvis_response_{timestamp}.wav")
             text_to_speech(truncated_response,response_file)
             
-            print("Jarvis:", processed_response)
+            print("Jarvis:", processed_response.replace("\n", " "), flush=True)
             
             play_audio(response_file)
         
-        os.remove(temp_wav_filename)
+        if temp_wav_filename and os.path.exists(temp_wav_filename):
+            os.remove(temp_wav_filename)
 
 if __name__ == "__main__":
     video_file = get_absolute_path("media/Jarvis_intro_video.mp4")

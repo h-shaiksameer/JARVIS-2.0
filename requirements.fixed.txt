@@ -108,7 +108,6 @@ pillow
 pipdeptree
 pipreqs
 platformdirs
-playsound
 proglog
 prompt_toolkit
 proto-plus
@@ -132,6 +131,7 @@ PyMuPDF
 PyMuPDFb
 pyparsing
 PyPDF2
+python-docx
 pyperclip
 pypiwin32
 PyQt5
