@@ -1,255 +1,274 @@
-# JARVIS-2.0
-Jarvis is a versatile virtual assistant that performs tasks like code generation, email management, scheduling, weather updates, and news fetching. Integrated with Gemini for real-time information, Jarvis responds to voice commands to manage daily activities seamlessly.
+# JARVIS 2.0
+JARVIS 2.0 is a Windows personal assistant written in Python. It combines voice input, speech recognition, text-to-speech, Gemini responses, desktop actions, document utilities, weather/news services, email, calendar, and a small Flask dashboard.
+
+## Current Status
+The working runtime is the legacy assistant in `myAI.py`.
+- `myAI.py` owns the active startup, microphone loop, command matching, Gemini calls, TTS, and feature dispatch.
+- `app.py` provides the Flask dashboard and starts the assistant as a child process.
+- `jarvis_app.py` is a compatibility wrapper around `myAI.main()`.
+- `core/`, `services/`, and `tools/` contain the beginning of the planned modular architecture. They are not yet the primary runtime.
+- Gemini connectivity and credentials must be valid. The tested key has reached its free-tier quota before, which produces HTTP 429 responses even when the local application is healthy.
+
+The project is functional enough for iterative cleanup, but it is not yet a fully modular production application.
+
+## Repository Layout
+
+```text
+myAI.py                    Live legacy assistant runtime
+app.py                     Flask dashboard and process manager
+jarvis_app.py              Legacy runtime compatibility launcher
+START_JARVIS.bat           Windows convenience launcher
+features/                  Legacy feature implementations
+core/                      Planned assistant orchestration and routing
+services/                  Planned external service wrappers
+tools/                     Planned reusable audio and system tools
+agents/                    Experimental agent layer
+templates/                 Flask HTML templates
+static/                    Flask static assets
+media/                     Startup, response, and feature audio/video
+temp/                      Temporary generated audio files
+JarvisResponse/            Generated assistant response audio
+MyVoice/                   Voice-related project output
+tests/                     Early smoke/integration tests
+requirements.txt           Existing broad dependency inventory
+requirements.fixed.txt     Clean install list used during environment repair
+```
 
-## Description
-**Jarvis**: Your Personal Virtual Assistant
+## Runtime Flow
 
-**Overview**: Jarvis is an advanced personal virtual assistant designed to simplify daily tasks and enhance productivity through voice commands. It leverages various APIs and built-in functionalities to create a seamless and user-friendly experience.
+```text
+Flask dashboard
+    |
+    +-- app.py starts .venv/Scripts/python.exe
+            |
+            +-- myAI.py
+                    |
+                    +-- record microphone audio
+                    +-- save temporary WAV under temp/
+                    +-- ignore silent audio
+                    +-- SpeechRecognition transcription
+                    +-- custom command matching
+                    +-- Gemini HTTP request for unknown commands
+                    +-- TTS and audio playback
+```
 
-## Key Features
+The Flask log stream intentionally exposes only lines beginning with `Sameer Boss:` and `Jarvis:`. Startup diagnostics, dependency warnings, and tracebacks remain in the terminal rather than the dashboard.
 
-### Personal Interaction
-- Introduces itself and provides personal information upon request.
-- Responds to questions about its origin, creator, and relationship with the user.
+## Requirements
 
-### Task Management
-- Opens and manages applications such as PowerPoint and email clients.
-- Sends emails on behalf of the user with simple voice commands.
-- Reads emails and provides a summary of new messages.
-- Manages and checks the user’s schedule, adding events as needed.
-- Schedules tasks and allows users to check or update schedules seamlessly.
-- Creates complete documents on the provided topics based on user requests.
+- Windows
+- Python 3.12.x recommended
+- A working microphone and speaker
+- FFmpeg available on `PATH` for media features that use it
+- A valid Gemini API key for AI responses
+- Optional service credentials for email, weather, news, and Google Calendar
 
-### Information Retrieval
-- Accesses Wikipedia to provide summaries and detailed information on various topics.
-- Fetches and plays trending news headlines, keeping the user updated.
-- Checks weather conditions and retrieves location information.
+The project should use this interpreter:
 
-### File and Document Management
-- Reads and scans PDF documents aloud, assisting users in digesting content easily.
-- Supports various file operations based on voice commands.
+```text
+C:\Users\hp\Desktop\JARVIS2.0\.venv\Scripts\python.exe
+```
+
+Always prefer the explicit interpreter path. It avoids accidentally running the system Python or an incomplete environment.
 
-### System Monitoring
-- Monitors and reports battery status, internet speed, and system performance.
-- Allows the user to shut down, restart, or sleep the system using voice commands.
+## Setup
 
-### Code Generation
-- Generates code snippets or entire programs in various programming languages based on the user's problem statement, facilitating rapid development.
+Open PowerShell in the repository root.
 
-### Location Services
-- Provides location information and can assist in navigation or retrieving relevant data based on geographical context.
+```powershell
+cd C:\Users\hp\Desktop\JARVIS2.0
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -r requirements.fixed.txt
+```
 
-### Social Media Integration
-- Opens popular social media platforms like Instagram, WhatsApp, and GitHub seamlessly.
-- Sends and reads messages on WhatsApp.
-- Checks and reads emails, providing a quick overview of recent messages.
+If the environment already exists, do not recreate it while Python, Flask, or JARVIS processes are running. Stop those processes first.
 
-### Voice Recognition and Playback
-- Utilizes speech synthesis to provide audio feedback, enhancing user engagement.
-- Listens for commands and responds accordingly, making it a hands-free experience.
+The dependency list is broad because the legacy features import many optional libraries. The next architecture phase should split this into a small core install and optional feature groups.
 
-### Additional Utilities
-- Provides real-time updates on various inquiries, from time and date to the weather.
-- Can perform calculations, manage files, and execute scripts upon request.
+## Environment Variables
 
-## Technologies Used
-- Python for core functionality.
-- APIs for news, weather, and Wikipedia access.
-- Speech recognition and text-to-speech libraries for interactive user experience.
+Create a `.env` file in the repository root. Never commit this file or real credentials.
 
-## Installation Instructions
-To get started, create a `.env` file in the root directory of the project and add the following environment variables:
+```env
+API_KEY=your_gemini_api_key
+GEMINI_API_KEY=your_gemini_api_key
+GOOGLE_API_KEY=your_google_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+NEWS_API_KEY=your_news_api_key
+EMAIL=your_email_address
+EMAIL_APP_PASSWORD=your_email_app_password
+```
 
-1. **Gemini API Key** (`API_KEY`):
-   - To get the Gemini API key, visit the [Gemini API website](https://gemini.com/).
-   - Sign up or log in to your account.
-   - Navigate to the API section to create a new API key.
-   - Copy the generated API key and paste it into your `.env` file.
-API_KEY=your_gemini_api_key_here
+`API_KEY` is the primary variable currently read by `myAI.py`. The modular Gemini service also accepts `GOOGLE_API_KEY` and `GEMINI_API_KEY`.
 
-2. **Email App Password** (`EMAIL_APP_PASSWORD`):
-    - If you are using Gmail, you may need to set up [App Passwords](https://support.google.com/accounts/answer/185201) if you have two-factor authentication enabled.
-    - Log in to your Google account, go to **Security** settings, and under **Signing in to Google**, look for **App passwords**.
-    - Select the app and device you want to generate the password for and click **Generate**.
-    - Copy the generated password and paste it into your `.env` file.
-EMAIL_APP_PASSWORD=your_email_app_password_here
+## Running JARVIS
 
-3. **OpenWeather API Key** (`OPENWEATHER_API_KEY`):
-    - Visit the [OpenWeather](https://openweathermap.org/api) website.
-    - Sign up for an account if you don’t have one.
-    - Once logged in, navigate to the **API keys** section and generate a new API key.
-    - Copy the generated API key and paste it into your `.env` file.
-OPENWEATHER_API_KEY=your_openweather_api_key_here
+### Direct assistant runtime
 
+Use this when debugging the voice and Gemini pipeline:
 
-4. **News API Key** (`NEWS_API_KEY`):
-    - Go to the [News API](https://newsapi.org/) website.
-    - Sign up for an account and log in.
-    - Navigate to the **API keys** section to obtain your key.
-    - Copy the API key and paste it into your `.env` file.
-NEWS_API_KEY=your_news_api_key_here
+```powershell
+cd C:\Users\hp\Desktop\JARVIS2.0
+.\.venv\Scripts\python.exe myAI.py
+```
 
+### Compatibility launcher
 
-5. **User Email** (`EMAIL`):
-    - Enter the email address for which you created the app password in the `.env` file. This email will be used for sending emails.
-EMAIL=your_email_id
+```powershell
+.\.venv\Scripts\python.exe jarvis_app.py
+```
 
+### Flask dashboard
 
-Install FFmpeg: ffpyplayer relies on FFmpeg for media playback. You may need to install FFmpeg separately. Here’s how:
+```powershell
+.\.venv\Scripts\python.exe app.py
+```
 
-Windows:
+Then open http://127.0.0.1:7000.
 
-Download the FFmpeg release from [FFmpeg's official website](https://ffmpeg.org/download.html)
+The dashboard starts and stops the assistant process and streams the filtered user/JARVIS conversation. Stop the Flask server with `Ctrl+C` before recreating the virtual environment or changing runtime files.
 
-Extract the contents to a folder (e.g., C:\ffmpeg).
+### Batch launcher
 
-Add the bin directory to your system PATH:
+`START_JARVIS.bat` is available for convenience, but the explicit venv commands above are the reliable debugging path.
 
-1. Right-click on **Computer** or **This PC** and select **Properties**.
+## Supported Interaction Examples
 
-2. Click on **Advanced system settings** on the left side.
+### Conversation
 
-3. Click on **Environment Variables**.
+- `who are you`
+- `what is my name`
+- General questions are sent to Gemini.
 
-4. Under **System Variables**, scroll down and find the **Path** variable, then click **Edit**
+### Applications and desktop actions
 
-5. Click **New** and enter the path to the bin directory
+- `open PowerPoint`
+- `open Chrome`
+- `open GitHub`
+- `open WhatsApp`
+- `open Instagram`
+- `open Gmail`
+- `open command`
 
-6. Click **OK** to close all the windows.
+### Information and utilities
 
-**Linux:**
+- `what is time now`
+- `check battery status`
+- `check weather`
+- `location`
+- `jarvis check internet speed`
+- `read PDF`
+- `give me news headlines`
 
-1. **Install FFmpeg**: Download the FFmpeg release from [FFmpeg's official website](https://ffmpeg.org/download.html) and extract it. Then, add the `bin` directory to your system PATH.
+### Productivity
 
-2. **Check Python Version Compatibility**: Make sure **ffpyplayer** is compatible with your version of **Python (3.12.2)**. You may want to check the documentation or the **PyPI page for ffpyplayer** for compatibility information.
+- `send email`
+- `check my schedule`
+- `add event`
+- `create a document`
+- `write code for me`
 
-3. **Run as Administrator**: Sometimes, permission issues can prevent DLLs from loading. Try **running your Python script as an administrator**.
+### Lifecycle
 
-4. **Install Microsoft Visual C++ Redistributable**: If you're on **Windows**, ensure that you have the latest version of the **Microsoft Visual C++ Redistributable** installed. This is often required for many Python libraries that depend on **C/C++ extensions**.
+- `jarvis stop`
+- `stop it jarvis`
+- `goodbye jarvis`
 
-5. **Check for Missing DLLs**: If the error persists, you can use a tool like **Dependency Walker** to check for missing DLLs when trying to load **ffpyplayer**. This tool will help you identify which specific DLLs are causing the issue.
+## Validation Checklist
 
+Run checks in this order when debugging:
 
-To install the required packages, run:
+1. Confirm the interpreter:
 
-    pip install -r requirements.txt
+    ```powershell
+    .\.venv\Scripts\python.exe -c "import sys; print(sys.executable); print(sys.version)"
+    ```
 
+2. Check the main runtime imports:
 
-## Usage Instructions
-To run Jarvis, execute the following command in your terminal:
+    ```powershell
+    .\.venv\Scripts\python.exe -c "import myAI; print('MYAI_IMPORT_OK')"
+    ```
 
-    .\start.bat
+3. Test Gemini independently before launching the voice loop.
+4. Test TTS and microphone capture independently.
+5. Run `myAI.py` directly and confirm the startup greeting.
+6. Run `app.py` and test the dashboard process controls.
 
-This will start the Jarvis assistant, and you can interact with it using voice commands.
+The known-good startup sequence is:
 
-**Getting Started**
+```text
+JARVIS startup: audio services ready.
+Good evening
+Welcome Back Boss, All Systems are fully operational
+JARVIS is ready for commands.
+Listening to You Boss...
+```
 
-1.After running the application, a GUI will appear.
+## Known Limitations
 
-2.Press ESC to skip the intro or wait for it to complete.
+- The legacy runtime still imports many services at module load time.
+- `google.generativeai` is deprecated; the live legacy path currently uses it for model compatibility, while `services/gemini_service.py` sketches the newer `google.genai` client.
+- Gemini responses depend on API quota, account billing, model availability, and network access. HTTP 429 means the key quota is exhausted, not that the local runtime is broken.
+- Whisper is optional in the current runtime. Active transcription uses SpeechRecognition with Google Web Speech.
+- SpeechRecognition returns no command for silence; it does not invent the previous `JARVIS listen to me` fallback anymore.
+- Some desktop, calendar, email, WhatsApp, and media features require external applications, credentials, permissions, or FFmpeg.
+- The Flask server is a local development server, not a production deployment.
+- The current command router is mostly phrase matching in `myAI.py`; it should eventually move into `core/command_router.py`.
 
-3.Jarvis will give you instructions and prompt you for a password.
+## Structural Improvement Roadmap
 
-4.Enter the password: phenom. (Note: Nothing will appear on the screen while typing. You have 5 attempts to enter the correct password.)
+The next refactor should be incremental so the working voice runtime remains available.
 
-5.If you enter the correct password, Jarvis will greet you with "Welcome back, boss."
+### Phase 1: Stabilize the current runtime
 
-**Important Note:**
+- Keep `myAI.py` runnable as a compatibility entrypoint.
+- Centralize paths, model names, timeouts, and feature flags.
+- Replace broad imports and wildcard imports with explicit imports.
+- Add focused tests for silence, transcription errors, cleanup, command routing, and Gemini quota errors.
+- Separate terminal diagnostics from dashboard conversation output.
 
-Make sure to place your actual API keys in the .env file before using Jarvis.
+### Phase 2: Extract core services
 
-**Custom Prompts**
+- Move microphone capture to an STT/audio service.
+- Move TTS and playback to a single audio service.
+- Move Gemini HTTP calls into `services/gemini_service.py`.
+- Move environment loading and path management into `core/config.py`.
+- Move phrase matching and command dispatch into `core/command_router.py`.
 
-You can use the following custom prompts to interact with Jarvis:
+### Phase 3: Extract feature tools
 
-**1.Introduction:**
+- Create independent tools for applications, weather, news, email, calendar, documents, and system controls.
+- Give each tool a narrow input/output contract.
+- Make optional integrations lazy-loaded so one missing service cannot prevent startup.
+- Add structured error results instead of printing errors from deep feature functions.
 
-"who are you"
+### Phase 4: Make the modular runtime primary
 
-"what is your name"
+- Have `core/assistant.py` own the main loop.
+- Register tools through the router.
+- Keep `myAI.py` as a compatibility wrapper during migration.
+- Add integration tests for the full command lifecycle.
+- Only then remove duplicated legacy implementations.
 
-"introduce yourself jarvis"
+## Security Notes
 
-"introduce yourself"
+- Do not commit `.env`, API keys, email passwords, OAuth tokens, or generated personal documents.
+- Rotate any credential that has been exposed outside the local machine.
+- Restrict destructive commands such as shutdown and restart behind explicit confirmation.
+- Validate file paths before reading or writing user files.
+- Avoid passing unrestricted user text directly into shell commands.
 
-"tell me something about yourself"
+## Contributing to the Next Plan
 
-**2.Application Management:**
+Before the next refactor, agree on:
 
-"open powerpoint"
+- which runtime should become primary
+- which features are essential versus optional
+- whether Google Web Speech or a local STT engine should be preferred
+- the desired Gemini client and model policy
+- how commands, tools, errors, and logs should be represented
+- the minimum test suite required before each migration step
 
-"open presentation"
-
-"shut down"
-
-"jarvis shutdown the system"
-
-"check battery status"
-
-**3.Email Management:**
-
-"send email"
-
-"jarvis send email to hp@gmail.com"
-
-"jarvis read my emails"
-
-"jarvis check for new messages"
-
-**4.Code Generation:**
-
-"jarvis write code for me"
-
-"generate code for me"
-
-"open code generator"
-
-5.Schedule Management:
-
-"check my schedule"
-
-"what is my schedule today"
-
-"add event"
-
-**6.Weather and Location:**
-
-"check weather"
-
-"open weather"
-
-"location"
-
-**7.News Updates:**
-
-"jarvis give me trending news"
-
-"jarvis what is the news today"
-
-**8.Internet Check:**
-
-"jarvis check internet speed"
-
-"what is my internet speed"
-
-"check internet connection"
-
-**Stopping Jarvis**
-To stop Jarvis, you can use the following phrases:
-
-"jarvis stop"
-
-"stop it jarvis"
-
-"shut up jarvis"
-
-"enough jarvis"
-
-"goodbye jarvis"    
-
-## Contact Information
-- LinkedIn: [Shaik Sameer Hussain](https://www.linkedin.com/in/shaik-sameer-hussain-b88323250/)
-- Email: [9121sameer@gmail.com](mailto:9121sameer@gmail.com)
-
-## Conclusion
-Jarvis aims to be the ultimate assistant, simplifying everyday tasks and providing information efficiently. With continuous improvements and feature additions, it strives to adapt to user needs and preferences.
+This README describes the repository as it currently exists. It is intended to be the baseline for the next structural improvement plan.
