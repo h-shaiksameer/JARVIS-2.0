@@ -39,7 +39,6 @@ import psutil
 from PyPDF2 import PdfReader
 import pygame
 from ffpyplayer.player import MediaPlayer
-import google.generativeai as genai
 from dotenv import load_dotenv
 from datetime import datetime, timezone,timedelta
 import subprocess
@@ -61,6 +60,8 @@ from features.print_slow_and_speak import print_slow_and_speak
 from features.news import fetch_and_play_news
 from features.reademail import read_recent_emails
 from features.playalong import *
+from core.config import AppConfig
+from services.gemini import GeminiService
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'features'))
 
@@ -74,11 +75,11 @@ def get_absolute_path(relative_path):
 # Loading the speech model here blocks startup before the welcome greeting can print.
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 # Set your API key
-load_dotenv()
+load_dotenv(override=True)
 api_key = os.getenv("API_KEY")  # Ensure your .env file has this variable
 GEMINI_MODEL_NAME = "gemini-3.6-flash"
 resume_flag = Value('b', False)
-genai.configure(api_key=api_key)
+gemini_service = GeminiService(AppConfig.from_environment())
 whisper_model = None
 
 
@@ -197,26 +198,30 @@ def play_audio(filename):
     while pygame.mixer.music.get_busy():  # Wait until the audio has finished playing
         pygame.time.Clock().tick(10)
 
+def _open_application(path_value, label):
+    if not path_value:
+        print_slow_and_speak(f"{label} is not configured on this computer.")
+        return
+    try:
+        path = os.path.expandvars(os.path.expanduser(path_value))
+        if not os.path.exists(path):
+            print_slow_and_speak(f"{label} application could not be found.")
+            return
+        os.startfile(path)
+    except Exception:
+        print_slow_and_speak(f"{label} application could not be opened.")
+
 def open_powerpoint():
     print_slow_and_speak("OK Boss....Opening PowerPoint application")
-    try:
-        subprocess.Popen([r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\PowerPoint.lnk"], shell=True)
-    except Exception:
-        print_slow_and_speak("PowerPoint application could not be opened. Please check the path.")
+    _open_application(os.getenv("JARVIS_POWERPOINT_PATH"), "PowerPoint")
 
 def open_chrome():
     print_slow_and_speak("OK Boss....Opening chrome")
-    try:
-        subprocess.Popen([r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk"], shell=True)
-    except Exception:
-        print_slow_and_speak("Google Chrome application could not be opened. Please check the path.")
+    _open_application(os.getenv("JARVIS_CHROME_PATH"), "Chrome")
 
 def open_github():
     print_slow_and_speak("OK Boss....Opening Github account")
-    try:
-        subprocess.Popen([r"C:\Users\hp\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Chrome Apps\GitHub.lnk"], shell=True)
-    except Exception:
-        print_slow_and_speak("GitHub application could not be opened. Please check the path.")
+    _open_application(os.getenv("JARVIS_GITHUB_PATH"), "GitHub")
 
 def transcribe_audio_using_sr(file_path):
     # Using SpeechRecognition library (Google Web Speech)
@@ -411,7 +416,7 @@ def save_audio_to_wav(audio, samplerate, filename):
 
 
 def record_audio(duration, samplerate=16000):
-    print("Listening to You Boss...", flush=True)
+    print('JARVIS_STATE:' + json.dumps({"state": "listening", "detail": "Listening for your command..."}), flush=True)
     try:
         recording = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='int16')
         sd.wait()
@@ -419,6 +424,10 @@ def record_audio(duration, samplerate=16000):
     except Exception as exc:
         print(f"Microphone capture failed: {exc}. Falling back to text input.", flush=True)
         return None
+
+
+def publish_state(state, detail):
+    print('JARVIS_STATE:' + json.dumps({"state": state, "detail": detail}), flush=True)
 
 
 def play_video(video_path):
@@ -483,41 +492,9 @@ def text_to_speech(text, filename):
 #     engine.runAndWait()
 
 def get_gemini_response(model, message):
-    if not api_key:
-        return "Gemini API key is not configured."
-
-    endpoint = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL_NAME}:generateContent"
-    )
-    payload = {
-        "contents": [{"parts": [{"text": message}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 120,
-        },
-    }
-
-    try:
-        response = requests.post(
-            endpoint,
-            params={"key": api_key},
-            json=payload,
-            timeout=(3, 12),
-        )
-        if response.status_code == 429:
-            print("Gemini quota is temporarily exhausted; skipping the slow retry.", flush=True)
-            return "Gemini quota is temporarily exhausted. Please try again later."
-        response.raise_for_status()
-        candidates = response.json().get("candidates", [])
-        if candidates:
-            return candidates[0]["content"]["parts"][0]["text"]
-        return "Gemini returned an empty response."
-    except requests.exceptions.Timeout:
-        return "Gemini took too long to respond. Please try again."
-    except requests.exceptions.RequestException as exc:
-        print(f"Gemini request failed: {exc}", flush=True)
-        return "Gemini is temporarily unavailable."
+    del model
+    publish_state("thinking", "Waiting for Gemini to respond...")
+    return gemini_service.generate(message)
 
 def process_response_text(text):
     text = re.sub(r'\*+', '', text)
@@ -616,9 +593,8 @@ def create_document():
 
     # Generate content using Gemini model
     model_name = "gemini-3.6-flash"
-    gemini_model = genai.GenerativeModel("gemini-3.6-flash")
     message = f"Provide a detailed explanation in a document form with sections about {topic}.(NOTE:THE MATTER SHOULD BE EASILY CONVERTED TO THE DOCUMENT BY JUST PASTING)"
-    content = get_gemini_response(gemini_model, message)
+    content = get_gemini_response(None, message)
     speak_and_play("Generating document content...")
 
     # Process the content before adding to document
@@ -1248,8 +1224,7 @@ class CodeGeneratorApp:
 
     def generate_code(self):
         problem = self.problem_entry.get()
-        gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-        response = get_gemini_response(gemini_model,problem)
+        response = get_gemini_response(None, problem)
         code = self.extract_code(response)
         self.code_output.delete(1.0, tk.END)
         self.insert_with_syntax_highlighting(code)
@@ -1417,12 +1392,7 @@ def main():
     except Exception as exc:
         print(f"JARVIS startup warning: audio services failed to initialize: {exc}", flush=True)
 
-    #whisper_model = whisper.load_model("base")
-    try:
-        gemini_model = genai.GenerativeModel("gemini-3.6-flash")
-    except Exception as exc:
-        print(f"Gemini model initialization failed: {exc}", flush=True)
-        gemini_model = None
+    gemini_model = None
 
     print("JARVIS startup: playing welcome message...", flush=True)
     try:
@@ -1431,6 +1401,7 @@ def main():
         print(f"Welcome message failed: {exc}", flush=True)
 
     print("JARVIS is ready for commands.", flush=True)
+    publish_state("idle", "Ready. Waiting for your next command.")
 
     custom_responses = {
         "what is my name": get_absolute_path("media/Introductory_speech_of_me.wav"),
@@ -1592,6 +1563,7 @@ def main():
             save_audio_to_wav(audio, 16000, temp_wav_filename)
 
             # Use SpeechRecognition or Google Cloud Speech-to-Text for transcription
+            publish_state("transcribing", "Converting your voice to text...")
             transcription = transcribe_audio_using_sr(temp_wav_filename)
             
             if transcription:
@@ -1600,9 +1572,11 @@ def main():
                 os.remove(temp_wav_filename)
 
         if not transcription:
+            publish_state("idle", "I did not hear a command. Listening again...")
             continue
         
         if any(phrase in transcription.lower() for phrase in stop_phrases):
+            publish_state("stopping", "Shutting down the assistant...")
             say_goodbye()
             print("Stopping...")
             if temp_wav_filename and os.path.exists(temp_wav_filename):
@@ -1616,6 +1590,7 @@ def main():
                 break
         
         if matched_response:
+            publish_state("processing", "Executing your command...")
             if matched_response == "open_powerpoint":
                 open_powerpoint()
             elif matched_response == "open_chrome":
@@ -1686,9 +1661,9 @@ def main():
             text_to_speech(truncated_response,response_file)
             
             print("Jarvis:", processed_response.replace("\n", " "), flush=True)
-            
+            publish_state("speaking", "Speaking the response...")
             play_audio(response_file)
-        
+        publish_state("idle", "Ready. Waiting for your next command.")
         if temp_wav_filename and os.path.exists(temp_wav_filename):
             os.remove(temp_wav_filename)
 

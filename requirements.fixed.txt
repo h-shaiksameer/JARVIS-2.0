@@ -47,6 +47,7 @@ google-auth-httplib2
 google-auth-oauthlib
 google-cloud-speech
 google-generativeai
+google-genai
 googleapis-common-protos
 grpcio
 grpcio-status

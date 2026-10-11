@@ -6,7 +6,7 @@ The working runtime is the legacy assistant in `myAI.py`.
 - `myAI.py` owns the active startup, microphone loop, command matching, Gemini calls, TTS, and feature dispatch.
 - `app.py` provides the Flask dashboard and starts the assistant as a child process.
 - `jarvis_app.py` is a compatibility wrapper around `myAI.main()`.
-- `core/`, `services/`, and `tools/` contain the beginning of the planned modular architecture. They are not yet the primary runtime.
+- `core/`, `services/`, and `tools/` now provide the modular contracts, configuration, router, Gemini boundary, and dashboard text-command path. The microphone command loop remains a compatibility path in `myAI.py` while feature migration continues.
 - Gemini connectivity and credentials must be valid. The tested key has reached its free-tier quota before, which produces HTTP 429 responses even when the local application is healthy.
 
 The project is functional enough for iterative cleanup, but it is not yet a fully modular production application.
@@ -32,6 +32,9 @@ MyVoice/                   Voice-related project output
 tests/                     Early smoke/integration tests
 requirements.txt           Existing broad dependency inventory
 requirements.fixed.txt     Clean install list used during environment repair
+.env.example               Safe environment and application-path template
+pytest.ini                 Test discovery configuration
+requirements-dev.txt       Development/test dependencies
 ```
 
 ## Runtime Flow
@@ -41,7 +44,7 @@ Flask dashboard
     |
     +-- app.py starts .venv/Scripts/python.exe
             |
-            +-- myAI.py
+            +-- myAI.py (legacy voice compatibility runtime)
                     |
                     +-- record microphone audio
                     +-- save temporary WAV under temp/
@@ -50,6 +53,16 @@ Flask dashboard
                     +-- custom command matching
                     +-- Gemini HTTP request for unknown commands
                     +-- TTS and audio playback
+
+Dashboard text commands use the new path:
+
+```text
+dashboard /command
+    -> core.application.AssistantApplication
+    -> core.command_router.CommandRouter
+    -> registered tool or services.gemini.GeminiService
+    -> structured response
+```
 ```
 
 The Flask log stream intentionally exposes only lines beginning with `Sameer Boss:` and `Jarvis:`. Startup diagnostics, dependency warnings, and tracebacks remain in the terminal rather than the dashboard.
@@ -129,6 +142,12 @@ Then open http://127.0.0.1:7000.
 
 The dashboard starts and stops the assistant process and streams the filtered user/JARVIS conversation. Stop the Flask server with `Ctrl+C` before recreating the virtual environment or changing runtime files.
 
+The dashboard also exposes:
+
+- `GET /status` for measured process and application state
+- `POST /command` with `{ "command": "..." }` for text-command testing
+- `POST /start`, `POST /stop`, and `POST /restart` for lifecycle control
+
 ### Batch launcher
 
 `START_JARVIS.bat` is available for convenience, but the explicit venv commands above are the reliable debugging path.
@@ -191,7 +210,7 @@ Run checks in this order when debugging:
     .\.venv\Scripts\python.exe -c "import myAI; print('MYAI_IMPORT_OK')"
     ```
 
-3. Test Gemini independently before launching the voice loop.
+3. Test Gemini through the bounded service independently before launching the voice loop.
 4. Test TTS and microphone capture independently.
 5. Run `myAI.py` directly and confirm the startup greeting.
 6. Run `app.py` and test the dashboard process controls.
@@ -208,8 +227,8 @@ Listening to You Boss...
 
 ## Known Limitations
 
-- The legacy runtime still imports many services at module load time.
-- `google.generativeai` is deprecated; the live legacy path currently uses it for model compatibility, while `services/gemini_service.py` sketches the newer `google.genai` client.
+- The legacy voice runtime still contains the largest feature dispatch surface in `myAI.py`; the new dashboard text path uses the modular boundaries.
+- `services/gemini.py` is the canonical bounded Gemini HTTP service. `services/gemini_service.py` remains a compatibility facade for callers using the older helper name.
 - Gemini responses depend on API quota, account billing, model availability, and network access. HTTP 429 means the key quota is exhausted, not that the local runtime is broken.
 - Whisper is optional in the current runtime. Active transcription uses SpeechRecognition with Google Web Speech.
 - SpeechRecognition returns no command for silence; it does not invent the previous `JARVIS listen to me` fallback anymore.
@@ -221,15 +240,17 @@ Listening to You Boss...
 
 The next refactor should be incremental so the working voice runtime remains available.
 
-### Phase 1: Stabilize the current runtime
+### Phase 1: Stabilize the current runtime (implemented in this slice)
 
 - Keep `myAI.py` runnable as a compatibility entrypoint.
-- Centralize paths, model names, timeouts, and feature flags.
+- Centralize paths, model names, timeouts, and feature flags in `core/config.py`.
 - Replace broad imports and wildcard imports with explicit imports.
 - Add focused tests for silence, transcription errors, cleanup, command routing, and Gemini quota errors.
 - Separate terminal diagnostics from dashboard conversation output.
+- Add real `/status`, `/command`, `/start`, `/stop`, and `/restart` dashboard boundaries.
+- Add the first registry/router/application/Gemini contracts and tests.
 
-### Phase 2: Extract core services
+### Phase 2: Extract core services (next)
 
 - Move microphone capture to an STT/audio service.
 - Move TTS and playback to a single audio service.

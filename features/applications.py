@@ -1,14 +1,14 @@
-import subprocess
 import webbrowser
+import os
 from features.print_slow_and_speak import print_slow_and_speak
 
 
 applications = {
-    "powerpoint": r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\PowerPoint.lnk",
-    "chrome": r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk",
-    "github": r"C:\Users\hp\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Chrome Apps\GitHub.lnk",
-    "whatsapp": r"C:\Users\hp\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Chrome Apps\WhatsApp Web.lnk",
-    "cmd": r"C:\Windows\System32\cmd.exe"
+    "powerpoint": os.getenv("JARVIS_POWERPOINT_PATH", ""),
+    "chrome": os.getenv("JARVIS_CHROME_PATH", ""),
+    "github": os.getenv("JARVIS_GITHUB_PATH", ""),
+    "whatsapp": os.getenv("JARVIS_WHATSAPP_PATH", ""),
+    "cmd": os.getenv("JARVIS_CMD_PATH", "")
 }
 
 
@@ -16,7 +16,11 @@ def open_application(app_name):
     print_slow_and_speak(f"OK Boss....Opening {app_name}")
     try:
         if app_name in applications:
-            subprocess.Popen([applications[app_name]], shell=True)
+            path = os.path.expandvars(os.path.expanduser(applications[app_name]))
+            if not path or not os.path.exists(path):
+                print_slow_and_speak(f"{app_name} application is not configured or unavailable.")
+                return
+            os.startfile(path)
         else:
             print_slow_and_speak(f"{app_name} application could not be opened. Please check the name.")
     except Exception as e:

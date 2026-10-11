@@ -1,42 +1,36 @@
 from __future__ import annotations
 
-import re
-from collections import defaultdict
-from typing import Any, Callable, Iterable, Optional
+from .command_registry import CommandRegistry
+from .models import CommandContext, CommandKind, CommandMatch
 
 
 class CommandRouter:
-    """Simple, extensible route registry for assistant intents."""
+    """Resolve normalized commands without containing feature implementation logic."""
 
-    def __init__(self) -> None:
-        self.routes: dict[str, list[Callable[..., Any]]] = defaultdict(list)
+    def __init__(self, registry: CommandRegistry | None = None) -> None:
+        self.registry = registry or CommandRegistry()
 
-    @staticmethod
-    def normalize(text: str) -> str:
-        return re.sub(r"[^a-z0-9\s]", "", text.lower()).strip()
-
-    def register(self, commands: Iterable[str], handler: Callable[..., Any]) -> None:
-        for command in commands:
-            normalized = self.normalize(command)
-            self.routes[normalized].append(handler)
-
-    def resolve(self, text: str) -> Optional[Callable[..., Any]]:
-        normalized = self.normalize(text)
-
+    def resolve(self, text: str) -> CommandMatch | None:
+        normalized = self.registry.normalize(text)
         if not normalized:
             return None
 
-        if normalized in self.routes:
-            return self.routes[normalized][0]
+        definition = self.registry.resolve_exact(normalized)
+        if definition is None:
+            candidates = []
+            for item in self.registry.definitions():
+                aliases = (item.command_id, *item.aliases)
+                if any(self.registry.normalize(alias) in normalized for alias in aliases):
+                    candidates.append(item)
+            definition = candidates[0] if candidates else None
 
-        for route in self.routes:
-            if route in normalized or normalized in route:
-                return self.routes[route][0]
+        if definition is None:
+            return None
 
-        return None
-
-    def execute(self, text: str, *args: Any, **kwargs: Any) -> Any:
-        handler = self.resolve(text)
-        if handler is None:
-            raise ValueError(f"No handler registered for command: {text!r}")
-        return handler(*args, **kwargs)
+        return CommandMatch(
+            command_id=definition.command_id,
+            kind=definition.kind,
+            handler=definition.handler,
+            context=CommandContext(raw_text=text, normalized_text=normalized),
+            requires_confirmation=definition.requires_confirmation,
+        )
