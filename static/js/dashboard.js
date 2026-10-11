@@ -106,6 +106,11 @@ async function processAction(path, button) {
 document.querySelector('#start').addEventListener('click', event => processAction('/start', event.currentTarget));
 document.querySelector('#restart').addEventListener('click', event => processAction('/restart', event.currentTarget));
 document.querySelector('#stop').addEventListener('click', event => processAction('/stop', event.currentTarget));
+document.querySelector('#holographic').addEventListener('click', async event => {
+    event.currentTarget.disabled = true;
+    await fetch('/holographic/activate', { method: 'POST' });
+    window.location.href = '/holographic';
+});
 
 commandForm.addEventListener('submit', async event => {
     event.preventDefault();

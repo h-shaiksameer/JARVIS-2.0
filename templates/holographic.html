@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JARVIS Holographic Mode</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/JARVIS_LOGO_1.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/holographic.css') }}">
+    <style>
+        body.camera-focus .camera-dock { position: fixed !important; left: 248px; right: 238px; top: 150px; bottom: 22px; z-index: 30; padding: 14px; background: rgba(2, 11, 22, .98); box-shadow: 0 0 45px rgba(101, 237, 241, .18); }
+        body.camera-focus .camera-view { height: calc(100% - 34px); aspect-ratio: auto; }
+        body.camera-focus .camera-view video, body.camera-focus .camera-view canvas { object-fit: contain; background: #01050b; }
+        body.camera-focus .camera-head { padding: 4px 5px 12px; font-size: .78rem; }
+        body.camera-focus .camera-focus-button { color: #04121d; background: var(--cyan); }
+        body { overflow: auto; }
+        .holo-stage { height: auto; min-height: calc(100vh - 132px); overflow: visible; }
+        .scene canvas { touch-action: none; cursor: crosshair; }
+        .holo-stage.workspace-zoom-out .scene,
+        .holo-stage.workspace-zoom-out .right-panel,
+        .holo-stage.workspace-zoom-out .reticle,
+        .holo-stage.workspace-zoom-out .stage-label,
+        .holo-stage.workspace-zoom-out .gesture-readout { transform: scale(.82); transform-origin: center center; }
+        body.camera-focus .scene { position: fixed; left: 20px; bottom: 22px; z-index: 31; width: 210px; height: 180px; border: 1px solid var(--line); background: rgba(2, 11, 22, .98); box-shadow: 0 0 26px rgba(101, 237, 241, .18); }
+        body.camera-focus .scene canvas { width: 100% !important; height: 100% !important; }
+        @media (max-width: 950px) {
+            body.camera-focus .camera-dock { left: 208px; right: 208px; top: 150px; }
+        }
+        @media (max-width: 680px) {
+            body.camera-focus .camera-dock { left: 10px; right: 10px; top: 150px; bottom: 220px; }
+            body.camera-focus .scene { left: 10px; bottom: 18px; width: 180px; height: 170px; }
+        }
+    </style>
+</head>
+<body>
+<main id="holo-app">
+    <header class="holo-topbar">
+        <div><span class="kicker">JARVIS / VISUAL INTERFACE</span><h1>HOLOGRAPHIC MODE</h1></div>
+        <div class="top-actions">
+            <span id="tracking-pill" class="tracking-pill">CAMERA OFF</span>
+            <button id="start-camera" class="camera-button" type="button">Enable camera</button>
+            <button id="stop-camera" class="secondary-button" type="button" disabled>Stop camera</button>
+            <button id="exit-holo" class="exit-button" type="button">Exit workspace</button>
+        </div>
+    </header>
+    <div id="diagnostic-banner" class="diagnostic-banner" role="status">Objects are ready. Enable the camera when you want gesture control.</div>
+    <section class="holo-stage">
+        <div class="left-sidebar">
+            <aside class="hud-panel gesture-panel"><span class="kicker">INTERACTION</span><h2>Gesture map</h2><ul><li><b>Index</b><span>Move pointer</span></li><li><b>Pinch</b><span>Grab / drag</span></li><li><b>Spread</b><span>Scale held object</span></li><li><b>Two hands</b><span>Rotate held object</span></li></ul><button id="toggle-interaction" class="hud-button" type="button">Disable gestures</button><button id="demo-mode" class="hud-button secondary-button" type="button">Test without camera</button></aside>
+            <div id="camera-dock" class="camera-dock"><div class="camera-head"><span>LIVE VISION</span><span id="camera-state">CAMERA OFF</span><button id="camera-focus" class="camera-focus-button" type="button">Expand</button></div><div id="camera-view" class="camera-view"><video id="camera" autoplay muted playsinline></video><canvas id="landmarks"></canvas><div class="camera-empty">Enable camera to start tracking</div><div class="scanline"></div></div></div>
+        </div>
+        <div class="reticle"><span></span></div>
+        <div class="stage-label top-left">OBJECT FIELD / LOCAL RENDER</div>
+        <div id="gesture-readout" class="gesture-readout"><span id="gesture-state">IDLE</span><small id="gesture-detail">Four demo objects are ready</small></div>
+        <div id="scene" class="scene"><div id="hand-pointer" class="hand-pointer"><span></span></div></div>
+        <aside class="hud-panel right-panel"><span class="kicker">SYSTEM MODULE</span><h2>Node 07</h2><div class="telemetry"><span>CAMERA</span><strong id="tracking-value">OFF</strong></div><div class="telemetry"><span>DETECTOR</span><strong id="detector-value">READY</strong></div><div class="telemetry"><span>HANDS</span><strong id="hands-value">0</strong></div><div class="telemetry"><span>ACTIVE OBJECT</span><strong id="object-value">NONE</strong></div><div class="telemetry"><span>LAST ERROR</span><strong id="error-value">NONE</strong></div></aside>
+        <div class="stage-footer"><span>LOCAL PROCESSING / NO VIDEO UPLOAD</span><span>ESC TO EXIT</span></div>
+    </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/three/build/three.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/holographic.js') }}"></script>
+</body>
+</html>

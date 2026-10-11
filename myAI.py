@@ -430,6 +430,21 @@ def publish_state(state, detail):
     print('JARVIS_STATE:' + json.dumps({"state": state, "detail": detail}), flush=True)
 
 
+def holographic_session_active():
+    return os.path.exists(get_absolute_path("temp/holographic.active"))
+
+
+def open_holographic_mode():
+    try:
+        os.makedirs(get_absolute_path("temp"), exist_ok=True)
+        with open(get_absolute_path("temp/holographic.active"), "w", encoding="utf-8") as lock:
+            lock.write("active")
+        webbrowser.open("http://127.0.0.1:7000/holographic")
+        publish_state("holographic", "Holographic mode is active. Voice listening is paused.")
+    except Exception as exc:
+        print(f"Holographic mode could not start: {exc}", flush=True)
+
+
 def play_video(video_path):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -1528,6 +1543,10 @@ def main():
         "what is my internet speed":"check_internet_speed",
         "internet speed":"check_internet_speed",
         "jarvis check internet connection":"check_internet_speed",
+        "start holographic mode": "open_holographic_mode",
+        "enter holographic mode": "open_holographic_mode",
+        "open holographic mode": "open_holographic_mode",
+        "holographic mode": "open_holographic_mode",
         "jarvis create a document":"create_document",
         "create a document":"create_document",
         "document":"create_document",
@@ -1545,6 +1564,10 @@ def main():
     ]   
     
     while True:
+        if holographic_session_active():
+            publish_state("holographic", "Holographic mode is active. Voice listening is paused.")
+            time.sleep(0.5)
+            continue
         temp_wav_filename = None
         audio = record_audio(duration=5)
         if audio is None:
@@ -1591,7 +1614,9 @@ def main():
         
         if matched_response:
             publish_state("processing", "Executing your command...")
-            if matched_response == "open_powerpoint":
+            if matched_response == "open_holographic_mode":
+                open_holographic_mode()
+            elif matched_response == "open_powerpoint":
                 open_powerpoint()
             elif matched_response == "open_chrome":
                 open_chrome()

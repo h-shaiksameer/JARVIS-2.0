@@ -147,6 +147,26 @@ The dashboard also exposes:
 - `GET /status` for measured process and application state
 - `POST /command` with `{ "command": "..." }` for text-command testing
 - `POST /start`, `POST /stop`, and `POST /restart` for lifecycle control
+- `GET /holographic` for the local camera/3D workspace
+- `POST /holographic/activate`, `POST /holographic/deactivate`, and `GET /holographic/status` for session lifecycle
+
+## Holographic Mode
+
+Activate Holographic Mode from the dashboard with **Enter holographic mode**, or use `start holographic mode`, `enter holographic mode`, or `open holographic mode` by voice.
+
+The workspace uses Three.js for the scene and MediaPipe Hand Landmarker in the browser for local webcam processing. Webcam frames are not uploaded by the application. The bottom-left preview shows the mirrored camera feed and detected landmarks.
+
+Supported interactions:
+
+- Index fingertip: move the holographic pointer and hover objects.
+- Stable thumb/index pinch: grab an object only while hovering it, then drag it.
+- Change pinch distance while holding: scale the selected object within bounds.
+- Two hands while holding: rotate the selected object.
+- Tracking loss: safely cancels the interaction after a timeout.
+- Disable gestures: pauses interaction without closing the workspace.
+- Exit workspace or `Esc`: stops the camera, removes the session lock, and resumes normal voice listening.
+
+The browser needs camera permission and network access to load the pinned Three.js and MediaPipe modules. Throw gestures are intentionally not enabled until a reliable velocity classifier is added.
 
 ### Batch launcher
 

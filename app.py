@@ -27,11 +27,36 @@ resume_flag = Value('b', False)
 app = Flask(__name__)
 process = None  # Global variable to manage the subprocess
 runtime_state = {"state": "stopped", "detail": "Assistant is offline."}
+HOLOGRAPHIC_LOCK = PROJECT_ROOT / "temp" / "holographic.active"
+HOLOGRAPHIC_LOCK.unlink(missing_ok=True)
 
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/holographic")
+def holographic():
+    return render_template("holographic.html")
+
+
+@app.route("/holographic/activate", methods=["POST"])
+def activate_holographic():
+    HOLOGRAPHIC_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    HOLOGRAPHIC_LOCK.write_text("active", encoding="utf-8")
+    return jsonify({"active": True})
+
+
+@app.route("/holographic/deactivate", methods=["POST"])
+def deactivate_holographic():
+    HOLOGRAPHIC_LOCK.unlink(missing_ok=True)
+    return jsonify({"active": False})
+
+
+@app.route("/holographic/status")
+def holographic_status():
+    return jsonify({"active": HOLOGRAPHIC_LOCK.exists()})
 
 
 def get_project_python():
@@ -64,6 +89,7 @@ def stop_jarvis():
         process.terminate()
         process = None
     runtime_state = {"state": "stopped", "detail": "Assistant is offline."}
+    HOLOGRAPHIC_LOCK.unlink(missing_ok=True)
     return {"status": "Jarvis stopped"}
 
 
